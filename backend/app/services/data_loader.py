@@ -40,18 +40,25 @@ class DataLoader:
         if self._worldcup is not None and not force:
             return self._worldcup
 
+        fetched_text: str | None = None
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(WORLDCUP_URL)
                 resp.raise_for_status()
                 self._worldcup = resp.json()
                 self._last_fetch = datetime.now(timezone.utc)
-                WORLDCUP_PATH.write_text(resp.text, encoding="utf-8")
+                fetched_text = resp.text
         except Exception:
             if WORLDCUP_PATH.exists():
                 self._worldcup = json.loads(WORLDCUP_PATH.read_text(encoding="utf-8"))
             else:
                 raise
+
+        if fetched_text is not None:
+            try:
+                WORLDCUP_PATH.write_text(fetched_text, encoding="utf-8")
+            except OSError:
+                pass
 
         return self._worldcup  # type: ignore[return-value]
 
