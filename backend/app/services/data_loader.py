@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
+import csv
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import httpx
-import pandas as pd
 
 from app.services.team_names import normalize
 
@@ -21,19 +21,32 @@ WORLDCUP_PATH = DATA_DIR / "worldcup2026.json"
 class DataLoader:
     def __init__(self) -> None:
         self._worldcup: dict[str, Any] | None = None
-        self._results: pd.DataFrame | None = None
+        self._results: list[dict[str, Any]] | None = None
         self._last_fetch: datetime | None = None
 
-    def load_results(self) -> pd.DataFrame:
+    def load_results(self) -> list[dict[str, Any]]:
         if self._results is None:
-            df = pd.read_csv(RESULTS_PATH)
-            df["date"] = pd.to_datetime(df["date"])
-            df["home_team"] = df["home_team"].map(normalize)
-            df["away_team"] = df["away_team"].map(normalize)
-            df["home_score"] = pd.to_numeric(df["home_score"], errors="coerce")
-            df["away_score"] = pd.to_numeric(df["away_score"], errors="coerce")
-            df = df.dropna(subset=["home_score", "away_score"])
-            self._results = df
+            rows: list[dict[str, Any]] = []
+            with RESULTS_PATH.open(encoding="utf-8", newline="") as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    try:
+                        home_score = int(row["home_score"])
+                        away_score = int(row["away_score"])
+                    except (TypeError, ValueError):
+                        continue
+
+                    rows.append(
+                        {
+                            **row,
+                            "home_team": normalize(row.get("home_team", "")),
+                            "away_team": normalize(row.get("away_team", "")),
+                            "home_score": home_score,
+                            "away_score": away_score,
+                            "neutral": row.get("neutral", "TRUE").upper() == "TRUE",
+                        }
+                    )
+            self._results = rows
         return self._results
 
     async def fetch_worldcup(self, force: bool = False) -> dict[str, Any]:
@@ -104,10 +117,8 @@ class DataLoader:
             teams.add(m["away_team"])
         return teams
 
-    def get_training_data(self, since: str = "2018-01-01") -> pd.DataFrame:
-        df = self.load_results()
-        cutoff = pd.to_datetime(since)
-        return df[df["date"] >= cutoff].copy()
+    def get_training_data(self, since: str = "2018-01-01") -> list[dict[str, Any]]:
+        return [row.copy() for row in self.load_results() if row["date"] >= since]
 
     @property
     def last_fetch(self) -> datetime | None:

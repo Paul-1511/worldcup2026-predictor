@@ -12,15 +12,17 @@ class PredictionEngine:
         self._ready = False
 
     def train(self) -> None:
-        df = loader.get_training_data(since="2018-01-01")
+        rows = loader.get_training_data(since="2018-01-01")
         wc_teams = loader.get_teams()
-        df_wc = df[
-            df["home_team"].isin(wc_teams) | df["away_team"].isin(wc_teams)
+        wc_rows = [
+            row
+            for row in rows
+            if row["home_team"] in wc_teams or row["away_team"] in wc_teams
         ]
-        train_df = df_wc if len(df_wc) > 500 else df
+        train_rows = wc_rows if len(wc_rows) > 500 else rows
 
-        self.poisson.fit(train_df)
-        self.xgboost.fit(train_df)
+        self.poisson.fit(train_rows)
+        self.xgboost.fit(train_rows)
         self._ready = True
 
     @property

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-
-import numpy as np
-import pandas as pd
-from scipy.stats import poisson
+from math import exp, factorial
 
 from app.services.team_names import normalize
 
@@ -27,13 +24,13 @@ class PoissonPredictor:
         self.strengths: dict[str, TeamStrength] = {}
         self.trained = False
 
-    def fit(self, df: pd.DataFrame) -> None:
-        teams = set(df["home_team"]) | set(df["away_team"])
+    def fit(self, rows: list[dict]) -> None:
+        teams = {row["home_team"] for row in rows} | {row["away_team"] for row in rows}
         team_stats: dict[str, dict[str, float]] = {
             t: {"gf": 0.0, "ga": 0.0, "n": 0} for t in teams
         }
 
-        for _, row in df.iterrows():
+        for row in rows:
             h, a = row["home_team"], row["away_team"]
             hs, aws = float(row["home_score"]), float(row["away_score"])
             for team, gf, ga in [(h, hs, aws), (a, aws, hs)]:
@@ -72,6 +69,10 @@ class PoissonPredictor:
 
         return max(home_exp, 0.05), max(away_exp, 0.05)
 
+    @staticmethod
+    def _pmf(goals: int, expected_goals: float) -> float:
+        return (expected_goals ** goals) * exp(-expected_goals) / factorial(goals)
+
     def predict(
         self, home: str, away: str, neutral: bool = True
     ) -> dict:
@@ -83,7 +84,7 @@ class PoissonPredictor:
 
         for h in range(self.MAX_GOALS + 1):
             for a in range(self.MAX_GOALS + 1):
-                p = poisson.pmf(h, lam_h) * poisson.pmf(a, lam_a)
+                p = self._pmf(h, lam_h) * self._pmf(a, lam_a)
                 if p > 0.001:
                     score_probs.append(
                         {"home": h, "away": a, "probability": round(float(p), 4)}
